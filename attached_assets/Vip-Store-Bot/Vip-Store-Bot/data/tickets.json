@@ -1,0 +1,158 @@
+{
+  "1496504123959279846": {
+    "userId": "722506775420469318",
+    "vip": "Aurelium",
+    "open": false,
+    "createdAt": 1776864786945,
+    "closedAt": 1776864812596
+  },
+  "1496504339072553021": {
+    "userId": "704462950949191710",
+    "vip": "Arcanjo",
+    "open": false,
+    "createdAt": 1776864838316,
+    "closedAt": 1776864864071
+  },
+  "1496505428501200926": {
+    "userId": "722506775420469318",
+    "vip": "Aurelium",
+    "vipValue": "aurelium",
+    "price": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "open": false,
+    "createdAt": 1776865097978,
+    "closedAt": 1776865109200
+  },
+  "1496505569878609931": {
+    "userId": "722506775420469318",
+    "vip": "Personalizado",
+    "vipValue": "personalizado",
+    "price": 60,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "open": false,
+    "createdAt": 1776865131858,
+    "closedAt": 1776865812450
+  },
+  "1496509002731749437": {
+    "userId": "722506775420469318",
+    "items": [
+      "personalizado"
+    ],
+    "price": 60,
+    "couponApplied": false,
+    "couponCode": null,
+    "discountPercent": 0,
+    "open": false,
+    "createdAt": 1776865950135,
+    "closedAt": 1776865973115
+  },
+  "1496509901462048768": {
+    "userId": "704462950949191710",
+    "items": [
+      "luminar"
+    ],
+    "price": 0,
+    "couponApplied": false,
+    "couponCode": null,
+    "discountPercent": 0,
+    "open": false,
+    "createdAt": 1776866164466,
+    "closedAt": 1776866186567
+  },
+  "1496510159537832087": {
+    "userId": "722506775420469318",
+    "items": [
+      "personalizado"
+    ],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 60,
+    "finalized": true,
+    "open": false,
+    "createdAt": 1776866226024,
+    "closedAt": 1776866252941
+  },
+  "1496510223618412734": {
+    "userId": "704462950949191710",
+    "items": [],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 0,
+    "finalized": false,
+    "open": false,
+    "createdAt": 1776866241383,
+    "closedAt": 1776866248794
+  },
+  "1496512955683180747": {
+    "userId": "722506775420469318",
+    "items": [
+      "personalizado"
+    ],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 60,
+    "finalized": true,
+    "open": false,
+    "createdAt": 1776866892750,
+    "mpPaymentId": null,
+    "closedAt": 1776867380767
+  },
+  "1496515074783707156": {
+    "userId": "722506775420469318",
+    "items": [
+      "personalizado"
+    ],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 60,
+    "finalized": true,
+    "open": false,
+    "createdAt": 1776867397877,
+    "mpPaymentId": null,
+    "closedAt": 1776867418431
+  },
+  "1496515364077441177": {
+    "userId": "704462950949191710",
+    "items": [
+      "personalizado"
+    ],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 60,
+    "finalized": true,
+    "open": false,
+    "createdAt": 1776867466893,
+    "mpPaymentId": null,
+    "closedAt": 1776867522175
+  },
+  "1496515764520222751": {
+    "userId": "704462950949191710",
+    "items": [],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 0,
+    "finalized": false,
+    "open": false,
+    "createdAt": 1776867562297,
+    "closedAt": 1776867578404
+  },
+  "1496517691413106708": {
+    "userId": "623637058896003083",
+    "items": [],
+    "couponCode": null,
+    "couponApplied": false,
+    "discountPercent": 0,
+    "price": 0,
+    "finalized": false,
+    "open": true,
+    "createdAt": 1776868021786
+  }
+}

@@ -115,6 +115,172 @@ function startPaymentPoller(channel, paymentId, userId) {
 export const TICKET_CLOSE_ID = "ticket_close";
 export const TICKET_CONFIRM_PAY_ID = "ticket_confirm_pay";
 
+// Cria um ticket de pagamento já aprovado pela staff para um VIP Personalizado.
+// Diferente do fluxo normal, este ticket nasce com o pedido finalizado e o PIX gerado
+// no preço definido pela equipe.
+export async function createCustomVipTicket({ guild, user, request, finalPrice, approvedBy }) {
+  const tickets = readJSON(TICKETS_FILE, {});
+
+  const overwrites = [
+    {
+      id: guild.roles.everyone.id,
+      deny: [PermissionFlagsBits.ViewChannel],
+    },
+    {
+      id: user.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.AttachFiles,
+      ],
+    },
+    {
+      id: guild.members.me.id,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ReadMessageHistory,
+      ],
+    },
+  ];
+
+  if (STAFF_ROLE_ID) {
+    overwrites.push({
+      id: STAFF_ROLE_ID,
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages,
+      ],
+    });
+  }
+
+  const safeName =
+    user.username
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 20) || "user";
+
+  const channel = await guild.channels.create({
+    name: `vip-personalizado-${safeName}`,
+    type: ChannelType.GuildText,
+    permissionOverwrites: overwrites,
+    topic: `VIP Personalizado — ${user.tag}`,
+  });
+
+  const vipLabel = request.title
+    ? `VIP Personalizado — ${request.title}`
+    : "VIP Personalizado";
+
+  let mpEmbed = null;
+  let mpFile = null;
+  let mpPaymentId = null;
+  let pixCopyPaste = null;
+
+  try {
+    const pix = await createPixPayment({
+      amount: finalPrice,
+      description: `Oblivion Store - ${vipLabel}`,
+      payerEmail: `discord-${user.id}@oblivion.store`,
+      payerFirstName: user.globalName || user.username || "Cliente",
+      externalReference: `custom-${request.id}`,
+    });
+
+    mpPaymentId = pix.paymentId;
+    pixCopyPaste = pix.qrCode;
+
+    const built = buildMercadoPagoEmbed({
+      vipLabel,
+      originalPrice: finalPrice,
+      discountPercent: 0,
+      qrCode: pix.qrCode,
+      qrCodeBase64: pix.qrCodeBase64,
+      paymentId: pix.paymentId,
+      ticketUrl: pix.ticketUrl,
+    });
+    mpEmbed = built.embed;
+    mpFile = built.file;
+  } catch (err) {
+    console.error("Erro ao gerar pagamento do VIP Personalizado:", err);
+    mpEmbed = new EmbedBuilder()
+      .setTitle("⚠️ Erro ao gerar pagamento")
+      .setColor(0xff5555)
+      .setDescription(
+        `Não consegui gerar o QR Code do PIX automaticamente.\n` +
+          `**Valor:** ${formatBRL(finalPrice)}\n\n` +
+          `A equipe vai te ajudar manualmente neste ticket. Erro: \`${err.message}\``
+      );
+  }
+
+  tickets[channel.id] = {
+    userId: user.id,
+    items: ["personalizado"],
+    couponCode: null,
+    couponApplied: false,
+    discountPercent: 0,
+    price: finalPrice,
+    finalized: true,
+    open: true,
+    createdAt: Date.now(),
+    mpPaymentId,
+    pixCopyPaste,
+    customRequestId: request.id,
+    customTitle: request.title,
+    approvedBy: approvedBy?.id || null,
+  };
+  writeJSON(TICKETS_FILE, tickets);
+
+  const requestSummary = new EmbedBuilder()
+    .setTitle("💎 VIP Personalizado — Pedido Aprovado")
+    .setColor(COLOR)
+    .setDescription(
+      `Olá <@${user.id}>! ✨\n\n` +
+        `Seu pedido de **VIP Personalizado** foi **aprovado** pela equipe.\n\n` +
+        `**Título:** ${request.title}\n` +
+        `**Descrição:**\n${request.description}\n\n` +
+        `**Valor combinado:** ${formatBRL(finalPrice)}\n\n` +
+        `Pague o PIX abaixo para liberar o seu VIP. Assim que o pagamento cair, ` +
+        `o bot detecta automaticamente e libera o botão de confirmação.`
+    )
+    .setFooter({ text: "Oblivion Store © 2026" });
+
+  await channel.send({
+    content: STAFF_ROLE_ID
+      ? `<@${user.id}> <@&${STAFF_ROLE_ID}>`
+      : `<@${user.id}>`,
+    embeds: [requestSummary],
+  });
+
+  await channel.send({
+    content: `<@${user.id}> seu pedido foi aprovado! Pague o PIX abaixo:`,
+    embeds: mpEmbed ? [mpEmbed] : [],
+    files: mpFile ? [mpFile] : [],
+  });
+
+  if (pixCopyPaste) {
+    await channel.send({
+      content: `\`\`\`\n${pixCopyPaste}\n\`\`\``,
+    });
+  }
+
+  await channel.send({
+    content:
+      mpPaymentId
+        ? "👆 Toque no código acima pra copiar. Assim que o pagamento cair, o bot **detecta automaticamente** e libera o botão de confirmação."
+        : "Use os botões abaixo:",
+    components: [buildTicketActionsRow()],
+  });
+
+  if (mpPaymentId) {
+    startPaymentPoller(channel, mpPaymentId, user.id);
+  }
+
+  return channel;
+}
+
 // Painel inicial: SEM botão de confirmar (evita que o cliente clique antes de pagar)
 function buildTicketActionsRow() {
   return new ActionRowBuilder().addComponents(

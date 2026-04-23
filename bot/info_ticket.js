@@ -7,6 +7,8 @@ import {
   PermissionFlagsBits,
   EmbedBuilder,
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   StringSelectMenuBuilder,
   ModalBuilder,
   TextInputBuilder,
@@ -14,6 +16,8 @@ import {
   MessageFlags,
 } from "discord.js";
 import { readJSON, writeJSON } from "./storage.js";
+import { createCustomVipTicket } from "./tickets.js";
+import { formatBRL } from "./payment.js";
 
 const COLOR = 0x9966cc;
 const AUTO_CLOSE_MS = 5 * 60 * 1000; // 5 minutos
@@ -26,6 +30,12 @@ export const CUSTOM_VIP_TITLE_ID = "custom_vip_title";
 export const CUSTOM_VIP_DESC_ID = "custom_vip_desc";
 export const CUSTOM_VIP_BUDGET_ID = "custom_vip_budget";
 export const CUSTOM_VIP_CONTACT_ID = "custom_vip_contact";
+
+// Botão e modal usados pela staff para aprovar um pedido
+export const CUSTOM_VIP_APPROVE_PREFIX = "custom_vip_approve:";
+export const CUSTOM_VIP_REJECT_PREFIX = "custom_vip_reject:";
+export const CUSTOM_VIP_APPROVE_MODAL_PREFIX = "custom_vip_approve_modal:";
+export const CUSTOM_VIP_PRICE_INPUT_ID = "custom_vip_price";
 
 const CUSTOM_VIP_FILE = "custom_vip_requests.json";
 
@@ -302,6 +312,20 @@ export async function handleCustomVipModalSubmit(interaction) {
     .setFooter({ text: "Oblivion Store © 2026 — Pedido de VIP Personalizado" })
     .setTimestamp(now);
 
+  // Botões de aprovação para a staff
+  const staffActions = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${CUSTOM_VIP_APPROVE_PREFIX}${requestId}`)
+      .setLabel("Aprovar e gerar pagamento")
+      .setEmoji("✅")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`${CUSTOM_VIP_REJECT_PREFIX}${requestId}`)
+      .setLabel("Recusar pedido")
+      .setEmoji("❌")
+      .setStyle(ButtonStyle.Danger)
+  );
+
   // Envia para o canal especializado e marca os admins
   let deliveredToChannel = false;
   if (CUSTOM_VIP_CHANNEL_ID && interaction.guild) {
@@ -311,13 +335,23 @@ export async function handleCustomVipModalSubmit(interaction) {
         .catch(() => null);
       if (channel && channel.isTextBased()) {
         const mention = STAFF_ROLE_ID ? `<@&${STAFF_ROLE_ID}>` : "@here";
-        await channel.send({
+        const sent = await channel.send({
           content: `${mention} novo pedido de **VIP Personalizado** recebido!`,
           embeds: [embed],
+          components: [staffActions],
           allowedMentions: STAFF_ROLE_ID
             ? { roles: [STAFF_ROLE_ID] }
             : { parse: ["everyone"] },
         });
+        record.staffMessageId = sent.id;
+        record.staffChannelId = sent.channelId;
+        // regrava com a referência da mensagem
+        const updated = readJSON(CUSTOM_VIP_FILE, []);
+        const idx = updated.findIndex((r) => r.id === requestId);
+        if (idx >= 0) {
+          updated[idx] = record;
+          writeJSON(CUSTOM_VIP_FILE, updated);
+        }
         deliveredToChannel = true;
       }
     } catch (err) {
@@ -344,6 +378,264 @@ export async function handleCustomVipModalSubmit(interaction) {
 
   await interaction.reply({
     content: confirmationLines.join("\n"),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+// ---------- Aprovação / recusa do pedido pela staff ----------
+
+function isStaff(interaction) {
+  if (
+    interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) ||
+    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
+  ) {
+    return true;
+  }
+  if (
+    STAFF_ROLE_ID &&
+    interaction.member?.roles?.cache?.has(STAFF_ROLE_ID)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function findRequest(requestId) {
+  const all = readJSON(CUSTOM_VIP_FILE, []);
+  const idx = all.findIndex((r) => r.id === requestId);
+  if (idx < 0) return { all, idx: -1, request: null };
+  return { all, idx, request: all[idx] };
+}
+
+// Mostra modal pedindo o valor final do VIP
+export async function handleCustomVipApproveButton(interaction) {
+  const requestId = interaction.customId.slice(CUSTOM_VIP_APPROVE_PREFIX.length);
+  if (!isStaff(interaction)) {
+    return interaction.reply({
+      content: "❌ Apenas a equipe pode aprovar este pedido.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const { request } = findRequest(requestId);
+  if (!request) {
+    return interaction.reply({
+      content: "❌ Pedido não encontrado.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (request.status !== "pendente") {
+    return interaction.reply({
+      content: `ℹ️ Este pedido já está com status **${request.status}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`${CUSTOM_VIP_APPROVE_MODAL_PREFIX}${requestId}`)
+    .setTitle("Aprovar VIP Personalizado");
+
+  const priceInput = new TextInputBuilder()
+    .setCustomId(CUSTOM_VIP_PRICE_INPUT_ID)
+    .setLabel("Valor final em R$ (ex.: 75,00)")
+    .setStyle(TextInputStyle.Short)
+    .setMinLength(1)
+    .setMaxLength(20)
+    .setPlaceholder("Ex.: 75,00")
+    .setRequired(true);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(priceInput));
+  await interaction.showModal(modal);
+}
+
+function parseBRLPrice(raw) {
+  if (!raw) return NaN;
+  const cleaned = raw
+    .replace(/[^\d,.\-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const value = Number.parseFloat(cleaned);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+// Recebe o preço e abre o ticket de pagamento para o usuário
+export async function handleCustomVipApproveModal(interaction) {
+  const requestId = interaction.customId.slice(
+    CUSTOM_VIP_APPROVE_MODAL_PREFIX.length
+  );
+  if (!isStaff(interaction)) {
+    return interaction.reply({
+      content: "❌ Apenas a equipe pode aprovar este pedido.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const { all, idx, request } = findRequest(requestId);
+  if (!request) {
+    return interaction.reply({
+      content: "❌ Pedido não encontrado.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (request.status !== "pendente") {
+    return interaction.reply({
+      content: `ℹ️ Este pedido já está com status **${request.status}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const rawPrice = interaction.fields
+    .getTextInputValue(CUSTOM_VIP_PRICE_INPUT_ID)
+    .trim();
+  const finalPrice = parseBRLPrice(rawPrice);
+  if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
+    return interaction.reply({
+      content: "❌ Valor inválido. Use o formato `75,00`.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const guild = interaction.guild;
+  const member = await guild.members.fetch(request.userId).catch(() => null);
+  if (!member) {
+    return interaction.editReply({
+      content: "❌ O usuário do pedido não está mais no servidor.",
+    });
+  }
+
+  let ticketChannel;
+  try {
+    ticketChannel = await createCustomVipTicket({
+      guild,
+      user: member.user,
+      request,
+      finalPrice,
+      approvedBy: interaction.user,
+    });
+  } catch (err) {
+    console.error("Erro ao criar ticket de VIP Personalizado:", err);
+    return interaction.editReply({
+      content: `❌ Não consegui criar o ticket: \`${err.message}\``,
+    });
+  }
+
+  // Atualiza o pedido na memória
+  all[idx] = {
+    ...request,
+    status: "aprovado",
+    finalPrice,
+    approvedBy: interaction.user.id,
+    approvedAt: new Date().toISOString(),
+    ticketChannelId: ticketChannel.id,
+  };
+  writeJSON(CUSTOM_VIP_FILE, all);
+
+  // Atualiza a mensagem original na staff (remove os botões e marca como aprovado)
+  try {
+    const original = interaction.message;
+    if (original) {
+      const oldEmbed = original.embeds?.[0];
+      const newEmbed = oldEmbed
+        ? EmbedBuilder.from(oldEmbed)
+            .setTitle("💎 Pedido de VIP Personalizado — APROVADO")
+            .setColor(0x57f287)
+        : null;
+      const fields = [
+        {
+          name: "✅ Aprovado por",
+          value: `<@${interaction.user.id}>`,
+          inline: true,
+        },
+        {
+          name: "💰 Valor final",
+          value: formatBRL(finalPrice),
+          inline: true,
+        },
+        {
+          name: "🎟️ Ticket de pagamento",
+          value: `<#${ticketChannel.id}>`,
+          inline: false,
+        },
+      ];
+      if (newEmbed) newEmbed.addFields(fields);
+
+      await original.edit({
+        content: `✅ Pedido aprovado por <@${interaction.user.id}>.`,
+        embeds: newEmbed ? [newEmbed] : original.embeds,
+        components: [],
+      });
+    }
+  } catch (err) {
+    console.error("Erro ao atualizar mensagem original do pedido:", err);
+  }
+
+  await interaction.editReply({
+    content: `✅ Pedido aprovado! Ticket de pagamento criado em <#${ticketChannel.id}> para <@${request.userId}>.`,
+  });
+}
+
+export async function handleCustomVipRejectButton(interaction) {
+  const requestId = interaction.customId.slice(CUSTOM_VIP_REJECT_PREFIX.length);
+  if (!isStaff(interaction)) {
+    return interaction.reply({
+      content: "❌ Apenas a equipe pode recusar este pedido.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  const { all, idx, request } = findRequest(requestId);
+  if (!request) {
+    return interaction.reply({
+      content: "❌ Pedido não encontrado.",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  if (request.status !== "pendente") {
+    return interaction.reply({
+      content: `ℹ️ Este pedido já está com status **${request.status}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  all[idx] = {
+    ...request,
+    status: "recusado",
+    rejectedBy: interaction.user.id,
+    rejectedAt: new Date().toISOString(),
+  };
+  writeJSON(CUSTOM_VIP_FILE, all);
+
+  try {
+    const original = interaction.message;
+    if (original) {
+      const oldEmbed = original.embeds?.[0];
+      const newEmbed = oldEmbed
+        ? EmbedBuilder.from(oldEmbed)
+            .setTitle("💎 Pedido de VIP Personalizado — RECUSADO")
+            .setColor(0xed4245)
+            .addFields({
+              name: "❌ Recusado por",
+              value: `<@${interaction.user.id}>`,
+              inline: true,
+            })
+        : null;
+      await original.edit({
+        content: `❌ Pedido recusado por <@${interaction.user.id}>.`,
+        embeds: newEmbed ? [newEmbed] : original.embeds,
+        components: [],
+      });
+    }
+  } catch (err) {
+    console.error("Erro ao atualizar mensagem original do pedido:", err);
+  }
+
+  await interaction.reply({
+    content: `❌ Pedido recusado.`,
     flags: MessageFlags.Ephemeral,
   });
 }

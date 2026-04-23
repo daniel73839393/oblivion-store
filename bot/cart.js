@@ -130,11 +130,12 @@ export function renderCart(cart, VIPS) {
     .setFooter({ text: "Oblivion Store © 2026" });
 
   // Componentes
+  const purchasableVips = VIPS.filter((v) => !v.hideFromCart);
   const productSelect = new StringSelectMenuBuilder()
     .setCustomId(CART_ADD_ID)
     .setPlaceholder("Selecione um produto...")
     .addOptions(
-      VIPS.map((v) => ({
+      purchasableVips.map((v) => ({
         label: v.label,
         value: v.value,
         description:

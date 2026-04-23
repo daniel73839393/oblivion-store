@@ -59,8 +59,14 @@ import {
   handleCreateInfoTicket,
   handleInfoVipSelect,
   handleCustomVipModalSubmit,
+  handleCustomVipApproveButton,
+  handleCustomVipApproveModal,
+  handleCustomVipRejectButton,
   INFO_VIP_SELECT_ID,
   CUSTOM_VIP_MODAL_ID,
+  CUSTOM_VIP_APPROVE_PREFIX,
+  CUSTOM_VIP_REJECT_PREFIX,
+  CUSTOM_VIP_APPROVE_MODAL_PREFIX,
 } from "./info_ticket.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -108,9 +114,11 @@ const VIPS = [
     label: "Personalizado",
     value: "personalizado",
     emoji: "💎",
-    description: "VIP Personalizado - R$ 60,00",
-    price: 60.0,
-    perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    description: "VIP Personalizado — sob consulta",
+    perks:
+      "_Solicite o seu VIP totalmente personalizado descrevendo os benefícios desejados. " +
+      "A equipe avalia o pedido e gera o pagamento com o valor combinado._",
+    hideFromCart: true,
   },
 ];
 
@@ -360,6 +368,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
 
+      // Botões da staff para pedidos de VIP Personalizado
+      if (interaction.customId.startsWith(CUSTOM_VIP_APPROVE_PREFIX)) {
+        await handleCustomVipApproveButton(interaction);
+        return;
+      }
+      if (interaction.customId.startsWith(CUSTOM_VIP_REJECT_PREFIX)) {
+        await handleCustomVipRejectButton(interaction);
+        return;
+      }
+
       // Botões do ticket
       if (interaction.customId === TICKET_CLOSE_ID) {
         await handleCloseTicket(interaction);
@@ -411,6 +429,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // Pedido de VIP Personalizado
       if (interaction.customId === CUSTOM_VIP_MODAL_ID) {
         await handleCustomVipModalSubmit(interaction);
+        return;
+      }
+
+      // Aprovação do pedido pela staff (com valor final)
+      if (interaction.customId.startsWith(CUSTOM_VIP_APPROVE_MODAL_PREFIX)) {
+        await handleCustomVipApproveModal(interaction);
         return;
       }
 

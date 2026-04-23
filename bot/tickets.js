@@ -19,6 +19,7 @@ import {
   COUPON_DISCOUNT_PERCENT,
 } from "./cart.js";
 import { commitCouponRedemption } from "./coupons.js";
+import { startVipDelivery } from "./minecraft_delivery.js";
 
 const TICKETS_FILE = "tickets.json";
 const COLOR = 0x9966cc;
@@ -81,6 +82,11 @@ async function checkAndConfirmPayment(channel, paymentId, userId) {
       embeds: [embed],
       components: [buildPostPaymentActionsRow()],
     });
+
+    // Dispara entrega automática no Minecraft (DM + RCON). Não bloqueia.
+    startVipDelivery(channel.client, ticket, channel).catch((err) =>
+      console.error("Falha ao disparar entrega de VIP:", err)
+    );
   } catch (err) {
     console.error("Erro no poller de pagamento:", err.message);
   }

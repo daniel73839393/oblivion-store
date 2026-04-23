@@ -3,6 +3,7 @@
 import {
   Client,
   GatewayIntentBits,
+  Partials,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -68,6 +69,7 @@ import {
   CUSTOM_VIP_REJECT_PREFIX,
   CUSTOM_VIP_APPROVE_MODAL_PREFIX,
 } from "./info_ticket.js";
+import { setVipsCatalog } from "./minecraft_delivery.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BANNER_PATH = path.join(__dirname, "assets", "loja_banner.png");
@@ -81,6 +83,7 @@ const VIPS = [
     emoji: "✨",
     description: "VIP Aurelium",
     perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    mcGroup: "aurelium",
   },
   {
     label: "Elysium",
@@ -88,6 +91,7 @@ const VIPS = [
     emoji: "🌌",
     description: "VIP Elysium",
     perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    mcGroup: "elysium",
   },
   {
     label: "Luminar",
@@ -95,6 +99,7 @@ const VIPS = [
     emoji: "💡",
     description: "VIP Luminar",
     perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    mcGroup: "luminar",
   },
   {
     label: "Arcanjo",
@@ -102,6 +107,7 @@ const VIPS = [
     emoji: "😇",
     description: "VIP Arcanjo",
     perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    mcGroup: "arcanjo",
   },
   {
     label: "Dragon",
@@ -109,6 +115,7 @@ const VIPS = [
     emoji: "🐉",
     description: "VIP Dragon",
     perks: "_(Configure os benefícios deste VIP no arquivo `bot/index.js`)_",
+    mcGroup: "dragon",
   },
   {
     label: "Personalizado",
@@ -135,7 +142,9 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages,
   ],
+  partials: [Partials.Channel, Partials.Message],
 });
 
 // ---------- Embeds & componentes da loja ----------
@@ -239,10 +248,13 @@ function buildHelpEmbed() {
 // ---------- Eventos ----------
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Bot conectado como ${c.user.tag}`);
+  setVipsCatalog(VIPS);
 });
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
+  // Comandos só no servidor — DMs ficam livres para os coletores (entrega de VIP)
+  if (!message.guild) return;
   const raw = message.content.trim();
   if (!raw.startsWith("!")) return;
 

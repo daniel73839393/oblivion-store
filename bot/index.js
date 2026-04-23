@@ -58,7 +58,9 @@ import { startKeepAliveServer } from "./keepalive.js";
 import {
   handleCreateInfoTicket,
   handleInfoVipSelect,
+  handleCustomVipModalSubmit,
   INFO_VIP_SELECT_ID,
+  CUSTOM_VIP_MODAL_ID,
 } from "./info_ticket.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -406,6 +408,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // ---------- MODALS ----------
     if (interaction.isModalSubmit()) {
+      // Pedido de VIP Personalizado
+      if (interaction.customId === CUSTOM_VIP_MODAL_ID) {
+        await handleCustomVipModalSubmit(interaction);
+        return;
+      }
+
       // Cupom dentro do carrinho
       if (interaction.customId === CART_COUPON_MODAL_ID) {
         if (!getOwnedTicket(interaction.channel.id, interaction.user.id)) {
